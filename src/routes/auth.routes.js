@@ -1,9 +1,5 @@
 import { Router } from "express";
-import {
-  login,
-  refresh,
-  logout
-} from "../controllers/auth.controller.js";
+import { login, refresh, logout } from "../controllers/auth.controller.js";
 import auth from "../middlewares/auth.middleware.js";
 import role from "../middlewares/role.middleware.js";
 
