@@ -72,10 +72,10 @@ export const login = async (req, res) => {
 export const refresh = async (req, res) => {
   try {
     const token = req.cookies.refreshToken;
-    console.log("REFRESH TOKEN:", token);
+    // console.log("REFRESH TOKEN:", token);
     if (!token) return res.status(401).json({ message: "Not authenticated" });
     let payload;
-    console.log("PAYLOAD:", payload);
+    // console.log("PAYLOAD:", payload);
     try {
       payload = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
     } catch {
