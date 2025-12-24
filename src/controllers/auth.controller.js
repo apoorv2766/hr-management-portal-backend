@@ -5,8 +5,6 @@ import Audit from "../models/audit.model.js";
 import {
   generateAccessToken,
   generateRefreshToken,
-  verifyAccessToken,
-  verifyRefreshToken,
 } from "../utils/token.js";
 
 export const login = async (req, res) => {
@@ -25,8 +23,8 @@ export const login = async (req, res) => {
     if (!match) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
-    const accessToken = await generateAccessToken(user);
-    const refreshToken = await generateRefreshToken(user);
+    const accessToken =  generateAccessToken(user);
+    const refreshToken =  generateRefreshToken(user);
     user.refreshToken = refreshToken;
     user.accessToken = accessToken;
     await user.save();
@@ -72,18 +70,22 @@ export const login = async (req, res) => {
 export const refresh = async (req, res) => {
   try {
     const token = req.cookies.refreshToken;
-    // console.log("REFRESH TOKEN:", token);
-    if (!token) return res.status(401).json({ message: "Not authenticated" });
+    if (!token) {
+      res.clearCookie("refreshToken");
+      return res.status(401).json({ message: "Not authenticated" });
+    }
     let payload;
-    // console.log("PAYLOAD:", payload);
     try {
       payload = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
     } catch {
+      res.clearCookie("refreshToken");
       return res.status(401).json({ message: "Refresh token expired" });
     }
     const user = await User.findById(payload.id);
-    if (!user || user.refreshToken !== token)
+    if (!user || user.refreshToken !== token) {
+      res.clearCookie("refreshToken");
       return res.status(403).json({ message: "Invalid refresh token" });
+    }
     const accessToken = generateAccessToken(user);
     return res.status(200).json({
       accessToken,
@@ -94,13 +96,11 @@ export const refresh = async (req, res) => {
       },
     });
   } catch (err) {
-    res.clearCookie("refreshToken");
-    res.clearCookie("accessToken");
-    return res.status(500).json({
-      message: "Internal server error",
-    });
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
+
+
 
 export const logout = async (req, res) => {
   try {
