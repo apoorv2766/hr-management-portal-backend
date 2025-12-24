@@ -2,10 +2,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
 import Audit from "../models/audit.model.js";
-import {
-  generateAccessToken,
-  generateRefreshToken,
-} from "../utils/token.js";
+import { generateAccessToken, generateRefreshToken } from "../utils/token.js";
 
 export const login = async (req, res) => {
   try {
@@ -23,8 +20,8 @@ export const login = async (req, res) => {
     if (!match) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
-    const accessToken =  generateAccessToken(user);
-    const refreshToken =  generateRefreshToken(user);
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
     user.refreshToken = refreshToken;
     user.accessToken = accessToken;
     await user.save();
@@ -67,6 +64,7 @@ export const login = async (req, res) => {
   }
 };
 
+
 export const refresh = async (req, res) => {
   try {
     const token = req.cookies.refreshToken;
@@ -99,8 +97,6 @@ export const refresh = async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 };
-
-
 
 export const logout = async (req, res) => {
   try {
