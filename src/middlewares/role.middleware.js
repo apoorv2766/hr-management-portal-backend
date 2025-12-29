@@ -1,4 +1,4 @@
-const roleMiddleware = (...roles) => {
+export const roleMiddleware = (...roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) {
       return res.sendStatus(403);
@@ -7,4 +7,4 @@ const roleMiddleware = (...roles) => {
   };
 };
 
-export default roleMiddleware;
+

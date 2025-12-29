@@ -1,31 +1,34 @@
 import bcrypt from "bcryptjs";
-import crypto from "crypto";
 import User from "../models/user.model.js";
 import Audit from "../models/audit.model.js";
+import { allowedRoles,defaultPassword } from "../utils/constants.js";
 
 export const addUser = async (req, res) => {
   try {
     const { name, email, phone, role } = req.body;
     if (!name || !email || !phone || !role) {
-      return res.status(400).json({ message: "name, email, phone and role are required" });
+      return res
+        .status(400)
+        .json({ message: "name, email, phone and role are required" });
     }
-    const allowedRoles = ["hr", "interviewer"];
     if (!allowedRoles.includes(role.toLowerCase())) {
-      return res.status(400).json({ message: "Invalid role. Allowed values: hr, interviewer" });
+      return res
+        .status(400)
+        .json({ message: "Invalid role. Allowed values: hr, interviewer" });
     }
     const existing = await User.findOne({ email });
     if (existing) {
-      return res.status(409).json({ message: "User with this email already exists" });
+      return res
+        .status(409)
+        .json({ message: "User with this email already exists" });
     }
-    // generate a temporary password
-    const tempPassword = crypto.randomBytes(6).toString("hex");
-    const hashed = await bcrypt.hash(tempPassword, 10);
+    const hashedPassword = await bcrypt.hash(defaultPassword, 10);
     const newUser = new User({
       name,
       email,
       phone,
       role: role.toLowerCase(),
-      password: hashed,
+      password: hashedPassword,
       createdBy: { id: req.user.id, name: req.user.name },
     });
     await newUser.save();
