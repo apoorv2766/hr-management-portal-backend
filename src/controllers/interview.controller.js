@@ -1,8 +1,8 @@
 import Interview from "../models/interview.model.js";
-import Audit from "../models/audit.model.js";
 import User from "../models/user.model.js";
 import { parseAndConvertToIST } from "../utils/datetime.js";
 import { interviewStatuses } from "../utils/constants.js";
+import mongoose from "mongoose";
 
 export const createInterview = async (req, res) => {
   try {
@@ -174,17 +174,10 @@ export const getInterviews = async (req, res) => {
     const interviews = await Interview.find(filter)
       .sort({ interviewDateTime: -1 })
       .select("-__v");
-
-    // Fetch interviewer users to surface available interviewers in the response
-    const interviewers = await User.find({ role: "interviewer" }).select(
-      "name"
-    );
-
     return res.status(200).json({
       message: "Interviews fetched successfully",
       count: interviews.length,
       interviews,
-      interviewers,
     });
   } catch (error) {
     console.error("GET INTERVIEWS ERROR:", error);
@@ -243,10 +236,8 @@ export const updateInterview = async (req, res) => {
         message: "Interview not found",
       });
     }
-
     // Build update object (only include provided fields)
     const updateData = {};
-
     if (candidateName !== undefined)
       updateData.candidateName = candidateName.trim();
     if (email !== undefined) {
@@ -264,7 +255,7 @@ export const updateInterview = async (req, res) => {
       const phoneRegex = /^\d{10}$/;
       if (!phoneRegex.test(phone)) {
         return res.status(400).json({
-          message: "Invalid phone number. Must be 10 digits",
+          message: "Phone number must be 10 digits",
         });
       }
       updateData.phone = phone.trim();
@@ -296,7 +287,6 @@ export const updateInterview = async (req, res) => {
         });
       }
     }
-
     // Validate status if provided
     if (status !== undefined) {
       if (!interviewStatuses.includes(status)) {
@@ -313,8 +303,8 @@ export const updateInterview = async (req, res) => {
     const updatedInterview = await Interview.findByIdAndUpdate(id, updateData, {
       new: true,
       runValidators: true,
-    });
-
+    }).select("-__v -interviewResult");
+    
     return res.status(200).json({
       message: "Interview updated successfully",
       interview: updatedInterview,
@@ -336,25 +326,6 @@ export const deleteInterview = async (req, res) => {
         message: "Interview not found",
       });
     }
-    // Audit log for delete
-    try {
-      await Audit.create({
-        userId: req.user.id,
-        role: req.user.role,
-        action: "DELETE_INTERVIEW",
-        ip: req.ip,
-        userAgent: req.headers["user-agent"],
-        details: {
-          interviewId: interview._id,
-          candidateName: interview.candidateName,
-          email: interview.email,
-          position: interview.position,
-        },
-      });
-    } catch (auditError) {
-      console.error(auditError);
-    }
-
     return res.status(200).json({
       message: "Interview deleted successfully",
       deleted: {
@@ -371,3 +342,75 @@ export const deleteInterview = async (req, res) => {
     });
   }
 };
+
+export const assignInterviewer = async (req, res) => {
+  try {
+    const { candidateId, interviewerId } = req.body;
+
+    if (!candidateId || !interviewerId) {
+      return res.status(400).json({
+        message: "candidateId and interviewerId are required",
+      });
+    }
+
+    // Validate candidateId
+    if (!mongoose.Types.ObjectId.isValid(candidateId)) {
+      return res.status(400).json({
+        message: "Invalid candidateId",
+      });
+    }
+
+    // Validate interviewerId
+    if (!mongoose.Types.ObjectId.isValid(interviewerId)) {
+      return res.status(400).json({
+        message: "Invalid interviewerId",
+      });
+    }
+
+    // Check if interview exists
+    const interview = await Interview.findById(candidateId);
+    if (!interview) {
+      return res.status(404).json({
+        message: "Interview not found",
+      });
+    }
+
+    // Check if interviewer exists and has interviewer role
+    const interviewer = await User.findById(interviewerId);
+    if (!interviewer) {
+      return res.status(404).json({
+        message: "Interviewer not found",
+      });
+    }
+
+    if (interviewer.role !== "interviewer") {
+      return res.status(400).json({
+        message: "User is not an interviewer",
+      });
+    }
+
+    // Update interview with assigned interviewer
+    interview.assignedInterviewer = interviewerId;
+    await interview.save();
+
+    // Populate the assigned interviewer details
+    await interview.populate("assignedInterviewer", "name email role");
+
+    return res.status(200).json({
+      message: "Interviewer assigned successfully",
+      interview: {
+        id: interview._id,
+        candidateName: interview.candidateName,
+        position: interview.position,
+        interviewDateTime: interview.interviewDateTime,
+        assignedInterviewer: interview.assignedInterviewer,
+      },
+    });
+  } catch (error) {
+    console.error("ASSIGN INTERVIEWER ERROR:", error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
+
