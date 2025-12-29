@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import { interviewStatuses } from "../utils/constants.js";
 
 const interviewSchema = new mongoose.Schema(
   {
@@ -49,10 +48,22 @@ const interviewSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    status: {
+    assignedInterviewer: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    interviewResult: {
       type: String,
-      enum: interviewStatuses,
-      default: "scheduled",
+      enum: [
+        "Lack of knowledge",
+        "Not joined",
+        "Need to do 2nd round",
+        "Offer sent",
+        "Offer accepted",
+        "Offer declined",
+      ],
+      default: null,
     },
     createdBy: {
       id: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

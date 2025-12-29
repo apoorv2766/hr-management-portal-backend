@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import User from "../models/user.model.js";
 import Audit from "../models/audit.model.js";
-import { allowedRoles,defaultPassword } from "../utils/constants.js";
+import { allowedRoles, defaultPassword } from "../utils/constants.js";
 
 export const addUser = async (req, res) => {
   try {
@@ -60,3 +60,35 @@ export const addUser = async (req, res) => {
     return res.status(500).json({ message: "Internal server error" });
   }
 };
+
+export const getUserByRole = async (req, res) => {
+  try {
+    const { role } = req.query;
+
+    if (!role) {
+      return res.status(400).json({
+        message: "Role query parameter is required",
+      });
+    }
+
+    if (!allowedRoles.includes(role.toLowerCase())) {
+      return res.status(400).json({
+        message: `Invalid role. Allowed values: ${allowedRoles.join(", ")}`,
+      });
+    }
+
+    const users = await User.find({ role: role.toLowerCase() }).select(
+      "name email role"
+    );
+
+    return res.status(200).json({
+      message: `Users with role '${role}' fetched successfully`,
+      count: users.length,
+      users,
+    });
+  } catch (err) {
+    console.error("GET USERS BY ROLE ERROR:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
