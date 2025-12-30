@@ -21,15 +21,12 @@ const interviewSchema = new mongoose.Schema(
     },
     currentCtc: {
       type: String,
-      required: true,
     },
     expectedCtc: {
       type: String,
-      required: true,
     },
     experience: {
       type: String,
-      required: true,
     },
     round: {
       type: String,
@@ -38,31 +35,26 @@ const interviewSchema = new mongoose.Schema(
     },
     joiningDate: {
       type: Date,
-      required: true,
     },
     interviewDateTime: {
       type: Date,
-      required: true,
     },
     meetingLink: {
       type: String,
-      required: true,
+    },
+    currentCompany: {
+      type: String,
+    },
+    noticePeriod: {
+      type: String,
     },
     assignedInterviewer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       default: null,
     },
-    interviewResult: {
+    status: {
       type: String,
-      enum: [
-        "Lack of knowledge",
-        "Not joined",
-        "Need to do 2nd round",
-        "Offer sent",
-        "Offer accepted",
-        "Offer declined",
-      ],
       default: null,
     },
     createdBy: {
