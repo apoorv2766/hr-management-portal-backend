@@ -1,7 +1,7 @@
 import Interview from "../models/interview.model.js";
 import User from "../models/user.model.js";
+import Interviews from "../models/interview.model.js";
 import { parseAndConvertToIST } from "../utils/datetime.js";
-import { interviewStatuses } from "../utils/constants.js";
 import mongoose from "mongoose";
 
 export const createInterview = async (req, res) => {
@@ -18,6 +18,8 @@ export const createInterview = async (req, res) => {
       joiningDate,
       interviewDateTime,
       meetingLink,
+      currentCompany,
+      noticePeriod,
     } = req.body;
 
     // Validate required fields
@@ -25,14 +27,8 @@ export const createInterview = async (req, res) => {
       "candidateName",
       "email",
       "phone",
-      "position",
-      "currentCtc",
-      "expectedCtc",
-      "experience",
       "round",
-      "joiningDate",
-      "interviewDateTime",
-      "meetingLink",
+      "position",
     ];
 
     const missingFields = requiredFields.filter((field) => !req.body[field]);
@@ -59,47 +55,58 @@ export const createInterview = async (req, res) => {
       });
     }
 
-    // Convert dates to IST
+    // Convert dates to IST (only if provided)
     let joiningDateIST;
     let interviewDateTimeIST;
 
-    try {
-      joiningDateIST = parseAndConvertToIST(joiningDate);
-      interviewDateTimeIST = parseAndConvertToIST(interviewDateTime);
-    } catch (error) {
-      return res.status(400).json({
-        message: error.message,
-      });
+    if (joiningDate) {
+      try {
+        joiningDateIST = parseAndConvertToIST(joiningDate);
+      } catch (error) {
+        return res.status(400).json({
+          message: error.message,
+        });
+      }
     }
 
-    // Validate that interview date is not in the past
-    const now = new Date();
-    if (interviewDateTimeIST < now) {
-      return res.status(400).json({
-        message: "Interview date and time cannot be in the past",
-      });
-    }
+    if (interviewDateTime) {
+      try {
+        interviewDateTimeIST = parseAndConvertToIST(interviewDateTime);
+        
+        // Validate that interview date is not in the past
+        const now = new Date();
+        if (interviewDateTimeIST < now) {
+          return res.status(400).json({
+            message: "Interview date and time cannot be in the past",
+          });
+        }
 
-    // Check for duplicate interview (same email and similar date/time)
-    const existingInterview = await Interview.findOne({
-      email: email.toLowerCase(),
-      interviewDateTime: {
-        $gte: new Date(interviewDateTimeIST.getTime() - 30 * 60000), // 30 mins before
-        $lte: new Date(interviewDateTimeIST.getTime() + 30 * 60000), // 30 mins after
-      },
-      status: { $ne: "cancelled" },
-    });
+        // Check for duplicate interview (same email and similar date/time)
+        const existingInterview = await Interview.findOne({
+          email: email.toLowerCase(),
+          interviewDateTime: {
+            $gte: new Date(interviewDateTimeIST.getTime() - 30 * 60000), // 30 mins before
+            $lte: new Date(interviewDateTimeIST.getTime() + 30 * 60000), // 30 mins after
+          },
+          status: { $ne: "cancelled" },
+        });
 
-    if (existingInterview) {
-      return res.status(409).json({
-        message:
-          "An interview is already scheduled for this candidate around the same time",
-        existingInterview: {
-          id: existingInterview._id,
-          candidateName: existingInterview.candidateName,
-          interviewDateTime: existingInterview.interviewDateTime,
-        },
-      });
+        if (existingInterview) {
+          return res.status(409).json({
+            message:
+              "An interview is already scheduled for this candidate around the same time",
+            existingInterview: {
+              id: existingInterview._id,
+              candidateName: existingInterview.candidateName,
+              interviewDateTime: existingInterview.interviewDateTime,
+            },
+          });
+        }
+      } catch (error) {
+        return res.status(400).json({
+          message: error.message,
+        });
+      }
     }
 
     // Create new interview
@@ -114,7 +121,9 @@ export const createInterview = async (req, res) => {
       round: round.trim(),
       joiningDate: joiningDateIST,
       interviewDateTime: interviewDateTimeIST,
-      meetingLink: meetingLink.trim(),
+      meetingLink: meetingLink?.trim(),
+      currentCompany: currentCompany?.trim(),
+      noticePeriod: noticePeriod?.trim(),
       createdBy: {
         id: req.user.id,
         name: req.user.name,
@@ -139,6 +148,8 @@ export const createInterview = async (req, res) => {
         joiningDate: newInterview.joiningDate,
         interviewDateTime: newInterview.interviewDateTime,
         meetingLink: newInterview.meetingLink,
+        currentCompany: newInterview.currentCompany,
+        noticePeriod: newInterview.noticePeriod,
         status: newInterview.status,
         createdBy: newInterview.createdBy,
         createdAt: newInterview.createdAt,
@@ -214,97 +225,20 @@ export const getInterviewById = async (req, res) => {
 export const updateInterview = async (req, res) => {
   try {
     const { id } = req.params;
-    const {
-      candidateName,
-      email,
-      phone,
-      position,
-      currentCtc,
-      expectedCtc,
-      experience,
-      round,
-      joiningDate,
-      interviewDateTime,
-      meetingLink,
-      status,
-    } = req.body;
+    
+    const updatedInterview = await Interview.findByIdAndUpdate(id, req.body, {
+      new: true,
+      runValidators: true,
+    })
+      .populate("assignedInterviewer", "name email role")
+      .select("-__v -interviewResult");
 
-    // Find existing interview
-    const existingInterview = await Interview.findById(id);
-    if (!existingInterview) {
+    if (!updatedInterview) {
       return res.status(404).json({
         message: "Interview not found",
       });
     }
-    // Build update object (only include provided fields)
-    const updateData = {};
-    if (candidateName !== undefined)
-      updateData.candidateName = candidateName.trim();
-    if (email !== undefined) {
-      // Validate email format
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        return res.status(400).json({
-          message: "Invalid email format",
-        });
-      }
-      updateData.email = email.toLowerCase().trim();
-    }
-    if (phone !== undefined) {
-      // Validate phone format
-      const phoneRegex = /^\d{10}$/;
-      if (!phoneRegex.test(phone)) {
-        return res.status(400).json({
-          message: "Phone number must be 10 digits",
-        });
-      }
-      updateData.phone = phone.trim();
-    }
-    if (position !== undefined) updateData.position = position.trim();
-    if (currentCtc !== undefined) updateData.currentCtc = currentCtc;
-    if (expectedCtc !== undefined) updateData.expectedCtc = expectedCtc;
-    if (experience !== undefined) updateData.experience = experience;
-    if (round !== undefined) updateData.round = round.trim();
-    if (meetingLink !== undefined) updateData.meetingLink = meetingLink.trim();
 
-    // Handle date fields with IST conversion
-    if (joiningDate !== undefined) {
-      try {
-        updateData.joiningDate = parseAndConvertToIST(joiningDate);
-      } catch (error) {
-        return res.status(400).json({
-          message: `Invalid joiningDate: ${error.message}`,
-        });
-      }
-    }
-
-    if (interviewDateTime !== undefined) {
-      try {
-        updateData.interviewDateTime = parseAndConvertToIST(interviewDateTime);
-      } catch (error) {
-        return res.status(400).json({
-          message: `Invalid interviewDateTime: ${error.message}`,
-        });
-      }
-    }
-    // Validate status if provided
-    if (status !== undefined) {
-      if (!interviewStatuses.includes(status)) {
-        return res.status(400).json({
-          message: `Invalid status. Allowed values: ${interviewStatuses.join(
-            ", "
-          )}`,
-        });
-      }
-      updateData.status = status;
-    }
-
-    // Update the interview
-    const updatedInterview = await Interview.findByIdAndUpdate(id, updateData, {
-      new: true,
-      runValidators: true,
-    }).select("-__v -interviewResult");
-    
     return res.status(200).json({
       message: "Interview updated successfully",
       interview: updatedInterview,
@@ -414,3 +348,37 @@ export const assignInterviewer = async (req, res) => {
   }
 };
 
+export const checkEmailExists = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const existing = await Interviews.findOne({ email });
+    if (existing) {
+      return res.json({ exists: true, message: "Email already exists" });
+    }
+    return res.json({ exists: false, message: "You can procces to add email" });
+  } catch (error) {
+    return res.status(500).json({ exists: false });
+  }
+};
+
+export const checkPhoneExists = async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) {
+      return res.json({ exists: false });
+    }
+    const existing = await Interviews.findOne({ phone: phone.trim() });
+    if (existing) {
+      return res.json({
+        exists: true,
+        message: "Phone Number already exists"
+      });
+    }
+    return res.json({
+      exists: false,
+      message: "Phone number is available",
+    });
+  } catch (error) {
+    console.error("Error checking phone:", error)
+  }
+};
