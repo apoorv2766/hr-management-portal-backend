@@ -53,6 +53,7 @@ export const login = async (req, res) => {
         id: user._id,
         name: user.name,
         role: user.role,
+        email: user.email,
       },
       message: "Login successful",
     });
@@ -90,6 +91,7 @@ export const refresh = async (req, res) => {
         id: user._id,
         name: user.name,
         role: user.role,
+         email: user.email,
       },
     });
   } catch (err) {

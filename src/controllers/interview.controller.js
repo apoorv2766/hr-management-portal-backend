@@ -2,6 +2,7 @@ import Interview from "../models/interview.model.js";
 import User from "../models/user.model.js";
 import Interviews from "../models/interview.model.js";
 import { parseAndConvertToIST } from "../utils/datetime.js";
+import { sendInterviewMail } from "../utils/email.js";
 import mongoose from "mongoose";
 
 export const createInterview = async (req, res) => {
@@ -72,7 +73,7 @@ export const createInterview = async (req, res) => {
     if (interviewDateTime) {
       try {
         interviewDateTimeIST = parseAndConvertToIST(interviewDateTime);
-        
+
         // Validate that interview date is not in the past
         const now = new Date();
         if (interviewDateTimeIST < now) {
@@ -94,7 +95,7 @@ export const createInterview = async (req, res) => {
         if (existingInterview) {
           return res.status(409).json({
             message:
-              "An interview is already scheduled for this candidate around the same time",
+              "Interview is already scheduled for this candidate for same time",
             existingInterview: {
               id: existingInterview._id,
               candidateName: existingInterview.candidateName,
@@ -132,6 +133,18 @@ export const createInterview = async (req, res) => {
     });
 
     await newInterview.save();
+
+    // Send email asynchronously (don't wait for it to complete)
+    if (round === "1st round" && interviewDateTimeIST && meetingLink) {
+      sendInterviewMail(
+        candidateName,
+        email,
+        position,
+        interviewDateTimeIST,
+        meetingLink,
+        round
+      ).catch((error) => console.error("Email sending failed:", error));
+    }
 
     return res.status(201).json({
       message: "Interview scheduled successfully",
@@ -225,7 +238,7 @@ export const getInterviewById = async (req, res) => {
 export const updateInterview = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const updatedInterview = await Interview.findByIdAndUpdate(id, req.body, {
       new: true,
       runValidators: true,
@@ -237,6 +250,22 @@ export const updateInterview = async (req, res) => {
       return res.status(404).json({
         message: "Interview not found",
       });
+    }
+
+    // Send email asynchronously (don't wait for it to complete)
+    if (
+      req.body.round === "2nd round" &&
+      updatedInterview.interviewDateTime &&
+      updatedInterview.meetingLink
+    ) {
+      sendInterviewMail(
+        updatedInterview.candidateName,
+        updatedInterview.email,
+        updatedInterview.position,
+        updatedInterview.interviewDateTime,
+        updatedInterview.meetingLink,
+        updatedInterview.round
+      ).catch((error) => console.error("Email sending failed:", error));
     }
 
     return res.status(200).json({
@@ -371,7 +400,7 @@ export const checkPhoneExists = async (req, res) => {
     if (existing) {
       return res.json({
         exists: true,
-        message: "Phone Number already exists"
+        message: "Phone Number already exists",
       });
     }
     return res.json({
@@ -379,6 +408,6 @@ export const checkPhoneExists = async (req, res) => {
       message: "Phone number is available",
     });
   } catch (error) {
-    console.error("Error checking phone:", error)
+    console.error("Error checking phone:", error);
   }
 };
