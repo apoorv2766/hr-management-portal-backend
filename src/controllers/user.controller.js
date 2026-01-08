@@ -92,3 +92,113 @@ export const getUserByRole = async (req, res) => {
   }
 };
 
+export const getUsers = async (req, res) => {
+  try {
+    const users = await User.find().select("-password -refreshToken");
+
+    return res.status(200).json({
+      message: "Users fetched successfully",
+      count: users.length,
+      users,
+    });
+  } catch (err) {
+    console.error("GET USERS ERROR:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const updateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, phone, role } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ message: "User ID is required" });
+    }
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (role && !allowedRoles.includes(role.toLowerCase())) {
+      return res.status(400).json({
+        message: `Invalid role. Allowed values: ${allowedRoles.join(", ")}`,
+      });
+    }
+
+    if (email && email !== user.email) {
+      const existing = await User.findOne({ email });
+      if (existing) {
+        return res.status(409).json({ message: "Email already exists" });
+      }
+    }
+
+    if (name) user.name = name;
+    if (email) user.email = email;
+    if (phone) user.phone = phone;
+    if (role) user.role = role.toLowerCase();
+
+    await user.save();
+
+    // audit log
+    try {
+      await Audit.create({
+        userId: req.user.id,
+        role: req.user.role,
+        action: "UPDATE_USER",
+        ip: req.ip,
+        userAgent: req.headers["user-agent"],
+        targetUserId: user._id,
+      });
+    } catch (e) {
+      console.warn("Audit write failed", e);
+    }
+
+    return res.status(200).json({
+      message: "User updated successfully",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    console.error("UPDATE USER ERROR:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ message: "User ID is required" });
+    }
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    await User.findByIdAndDelete(id);
+    try {
+      await Audit.create({
+        userId: req.user.id,
+        role: req.user.role,
+        action: "DELETE_USER",
+        ip: req.ip,
+        userAgent: req.headers["user-agent"],
+        targetUserId: user._id,
+      });
+    } catch (e) {
+      console.warn("Audit write failed", e);
+    }
+    return res.status(200).json({
+      message: "User deleted successfully",
+    });
+  } catch (err) {
+    console.error("DELETE USER ERROR:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};

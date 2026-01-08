@@ -135,7 +135,7 @@ export const createInterview = async (req, res) => {
     await newInterview.save();
 
     // Send email asynchronously (don't wait for it to complete)
-    if (round === "1st round" && interviewDateTimeIST && meetingLink) {
+    if ((round === "1st round" || round === "2nd round") && interviewDateTimeIST && meetingLink) {
       sendInterviewMail(
         candidateName,
         email,
@@ -254,7 +254,7 @@ export const updateInterview = async (req, res) => {
 
     // Send email asynchronously (don't wait for it to complete)
     if (
-      req.body.round === "2nd round" &&
+      (req.body.round === "1st round" || req.body.round === "2nd round") &&
       updatedInterview.interviewDateTime &&
       updatedInterview.meetingLink
     ) {
