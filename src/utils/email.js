@@ -1,6 +1,13 @@
 import nodemailer from "nodemailer";
 
-export const sendInterviewMail = async (candidateName, email, position, interviewDateTime, meetingLink, round) => {
+export const sendInterviewMail = async (
+  candidateName,
+  email,
+  position,
+  interviewDateTime,
+  meetingLink,
+  round
+) => {
   try {
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
@@ -12,7 +19,6 @@ export const sendInterviewMail = async (candidateName, email, position, intervie
       },
     });
 
-    // Format date and time
     const date = new Date(interviewDateTime);
     const formattedDate = date.toLocaleDateString("en-IN", {
       year: "numeric",

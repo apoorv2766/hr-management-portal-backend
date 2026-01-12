@@ -15,6 +15,10 @@ const userSchema = new mongoose.Schema(
       id: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       name: { type: String },
     },
+     updatedBy: {
+      id: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      name: { type: String },
+    },
     refreshToken: { type: String, default: null },
   },
   { timestamps: true }

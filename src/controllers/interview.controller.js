@@ -134,8 +134,22 @@ export const createInterview = async (req, res) => {
 
     await newInterview.save();
 
+    // Provide activity payload for middleware
+    res.locals.activity = {
+      action: "CREATE_INTERVIEW",
+      entityType: "interview",
+      entityId: newInterview._id,
+      entityName: `${newInterview.candidateName} - ${newInterview.position}`,
+      description: `Scheduled interview for ${newInterview.candidateName} for ${newInterview.position} on ${newInterview.interviewDateTime}`,
+      targetUserId: null,
+    };
+
     // Send email asynchronously (don't wait for it to complete)
-    if ((round === "1st round" || round === "2nd round") && interviewDateTimeIST && meetingLink) {
+    if (
+      (round === "1st round" || round === "2nd round") &&
+      interviewDateTimeIST &&
+      meetingLink
+    ) {
       sendInterviewMail(
         candidateName,
         email,
@@ -238,7 +252,6 @@ export const getInterviewById = async (req, res) => {
 export const updateInterview = async (req, res) => {
   try {
     const { id } = req.params;
-
     const updatedInterview = await Interview.findByIdAndUpdate(id, req.body, {
       new: true,
       runValidators: true,
@@ -251,7 +264,6 @@ export const updateInterview = async (req, res) => {
         message: "Interview not found",
       });
     }
-
     // Send email asynchronously (don't wait for it to complete)
     if (
       (req.body.round === "1st round" || req.body.round === "2nd round") &&
@@ -267,6 +279,16 @@ export const updateInterview = async (req, res) => {
         updatedInterview.round
       ).catch((error) => console.error("Email sending failed:", error));
     }
+
+    // Provide activity payload for middleware
+    res.locals.activity = {
+      action: "UPDATE_INTERVIEW",
+      entityType: "interview",
+      entityId: updatedInterview._id,
+      entityName: `${updatedInterview.candidateName} - ${updatedInterview.position}`,
+      description: `Updated interview for ${updatedInterview.candidateName}`,
+      targetUserId: null,
+    };
 
     return res.status(200).json({
       message: "Interview updated successfully",
@@ -289,6 +311,17 @@ export const deleteInterview = async (req, res) => {
         message: "Interview not found",
       });
     }
+
+    // Provide activity payload for middleware
+    res.locals.activity = {
+      action: "DELETE_INTERVIEW",
+      entityType: "interview",
+      entityId: interview._id,
+      entityName: `${interview.candidateName} - ${interview.position}`,
+      description: `Deleted interview for ${interview.candidateName}`,
+      targetUserId: null,
+    };
+
     return res.status(200).json({
       message: "Interview deleted successfully",
       deleted: {
@@ -358,6 +391,16 @@ export const assignInterviewer = async (req, res) => {
 
     // Populate the assigned interviewer details
     await interview.populate("assignedInterviewer", "name email role");
+
+    // Provide activity payload for middleware
+    res.locals.activity = {
+      action: "ASSIGN_INTERVIEWER",
+      entityType: "interview",
+      entityId: interview._id,
+      entityName: `${interview.candidateName} - ${interview.position}`,
+      description: `Assigned ${interviewer.name} as interviewer for ${interview.candidateName}`,
+      targetUserId: interviewerId,
+    };
 
     return res.status(200).json({
       message: "Interviewer assigned successfully",

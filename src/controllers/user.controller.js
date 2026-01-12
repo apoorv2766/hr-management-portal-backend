@@ -1,6 +1,5 @@
 import bcrypt from "bcryptjs";
 import User from "../models/user.model.js";
-import Audit from "../models/audit.model.js";
 import { allowedRoles, defaultPassword } from "../utils/constants.js";
 
 export const addUser = async (req, res) => {
@@ -32,19 +31,15 @@ export const addUser = async (req, res) => {
       createdBy: { id: req.user.id, name: req.user.name },
     });
     await newUser.save();
-    // audit log
-    try {
-      await Audit.create({
-        userId: req.user.id,
-        role: req.user.role,
-        action: "CREATE_USER",
-        ip: req.ip,
-        userAgent: req.headers["user-agent"],
-        targetUserId: newUser._id,
-      });
-    } catch (e) {
-      console.warn("Audit write failed", e);
-    }
+    // Provide activity payload for middleware
+    res.locals.activity = {
+      action: "CREATE_USER",
+      entityType: "user",
+      entityId: newUser._id,
+      entityName: newUser.name,
+      description: `Created new user: ${newUser.name} (${newUser.email}) with role ${newUser.role}`,
+      targetUserId: newUser._id,
+    };
     return res.status(201).json({
       message: "User created successfully",
       user: {
@@ -94,12 +89,22 @@ export const getUserByRole = async (req, res) => {
 
 export const getUsers = async (req, res) => {
   try {
-    const users = await User.find().select("-password -refreshToken");
-
+    const users = await User.find().select("-__v -password -refreshToken");
+    const formattedUsers = users.map((user) => ({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      createdBy: user.createdBy,
+      updatedBy: user.updatedBy,
+    }));
     return res.status(200).json({
       message: "Users fetched successfully",
-      count: users.length,
-      users,
+      count: formattedUsers.length,
+      users: formattedUsers,
     });
   } catch (err) {
     console.error("GET USERS ERROR:", err);
@@ -115,7 +120,6 @@ export const updateUser = async (req, res) => {
     if (!id) {
       return res.status(400).json({ message: "User ID is required" });
     }
-
     const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -134,25 +138,59 @@ export const updateUser = async (req, res) => {
       }
     }
 
-    if (name) user.name = name;
-    if (email) user.email = email;
-    if (phone) user.phone = phone;
-    if (role) user.role = role.toLowerCase();
+    const changes = [];
+    if (name && name !== user.name) {
+      changes.push({
+        fieldName: "name",
+        oldValue: user.name,
+        newValue: name,
+        description: `Changed name from "${user.name}" to "${name}"`,
+      });
+      user.name = name;
+    }
+    if (email && email !== user.email) {
+      changes.push({
+        fieldName: "email",
+        oldValue: user.email,
+        newValue: email,
+        description: `Changed email from "${user.email}" to "${email}"`,
+      });
+      user.email = email;
+    }
+    if (phone && phone !== user.phone) {
+      changes.push({
+        fieldName: "phone",
+        oldValue: user.phone,
+        newValue: phone,
+        description: `Changed phone from "${user.phone}" to "${phone}"`,
+      });
+      user.phone = phone;
+    }
+    if (role && role.toLowerCase() !== user.role) {
+      changes.push({
+        fieldName: "role",
+        oldValue: user.role,
+        newValue: role.toLowerCase(),
+        description: `Changed role from "${
+          user.role
+        }" to "${role.toLowerCase()}"`,
+      });
+      user.role = role.toLowerCase();
+    }
 
+    user.updatedBy = { id: req.user.id, name: req.user.name };
     await user.save();
 
-    // audit log
-    try {
-      await Audit.create({
-        userId: req.user.id,
-        role: req.user.role,
+    // Provide activity payload for middleware
+    if (changes.length > 0) {
+      res.locals.activity = {
         action: "UPDATE_USER",
-        ip: req.ip,
-        userAgent: req.headers["user-agent"],
+        entityType: "user",
+        entityId: user._id,
+        entityName: user.name,
+        changes,
         targetUserId: user._id,
-      });
-    } catch (e) {
-      console.warn("Audit write failed", e);
+      };
     }
 
     return res.status(200).json({
@@ -163,6 +201,8 @@ export const updateUser = async (req, res) => {
         email: user.email,
         phone: user.phone,
         role: user.role,
+        updatedAt: user.updatedAt,
+        updatedBy: user.updatedBy,
       },
     });
   } catch (err) {
@@ -181,19 +221,18 @@ export const deleteUser = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
+    const userName = user.name;
     await User.findByIdAndDelete(id);
-    try {
-      await Audit.create({
-        userId: req.user.id,
-        role: req.user.role,
-        action: "DELETE_USER",
-        ip: req.ip,
-        userAgent: req.headers["user-agent"],
-        targetUserId: user._id,
-      });
-    } catch (e) {
-      console.warn("Audit write failed", e);
-    }
+
+    // Provide activity payload for middleware
+    res.locals.activity = {
+      action: "DELETE_USER",
+      entityType: "user",
+      entityId: user._id,
+      entityName: userName,
+      description: `Deleted user: ${userName} (${user.email})`,
+      targetUserId: user._id,
+    };
     return res.status(200).json({
       message: "User deleted successfully",
     });
