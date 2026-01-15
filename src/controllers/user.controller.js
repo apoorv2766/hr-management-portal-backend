@@ -72,9 +72,9 @@ export const getUserByRole = async (req, res) => {
       });
     }
 
-    const users = await User.find({ role: role.toLowerCase() }).select(
-      "name email role"
-    );
+    const users = await User.find({ role: role.toLowerCase() })
+      .sort({ createdAt: -1 })
+      .select("name email role");
 
     return res.status(200).json({
       message: `Users with role '${role}' fetched successfully`,
@@ -89,7 +89,9 @@ export const getUserByRole = async (req, res) => {
 
 export const getUsers = async (req, res) => {
   try {
-    const users = await User.find().select("-__v -password -refreshToken");
+    const users = await User.find()
+      .sort({ createdAt: -1 })
+      .select("-__v -password -refreshToken");
     const formattedUsers = users.map((user) => ({
       _id: user._id,
       name: user.name,

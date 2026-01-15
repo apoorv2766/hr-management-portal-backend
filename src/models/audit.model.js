@@ -2,12 +2,12 @@ import mongoose from "mongoose";
 
 const auditSchema = new mongoose.Schema(
   {
-    userId: {
+    userId: { //login user who performed the action
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-    },
-    userName: { type: String },
+    }, 
+    userName: { type: String },// to whom the task will perform
     userRole: { type: String },
     action: { type: String }, // e.g., CREATE_USER, UPDATE_USER, DELETE_USER, CREATE_INTERVIEW
     entityType: { type: String }, // e.g., "user", "interview"

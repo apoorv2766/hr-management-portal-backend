@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import User from "../models/user.model.js";
+import Interview from "../models/interview.model.js";
 import Audit from "../models/audit.model.js";
 import { logActivity } from "../utils/activityTracker.js";
 import { formatActivityEntry } from "../utils/activityFormatter.js";
@@ -82,11 +83,68 @@ export const getUserActivityTimeline = async (req, res) => {
       performedAt: activity.createdAt,
     }));
     return res.status(200).json({
-      message: "User activity timeline fetched successfully",
+      message: "User activity fetched successfully",
       count: formatted.length,
       activities: formatted,
     });
   } catch (err) {
     console.error("GET USER ACTIVITY TIMELINE ERROR:", err);
+  }
+};
+
+export const getInterviewActivityTimeline = async (req, res) => {
+  try {
+    const { interviewId } = req.params;
+    const { limit = 100, skip = 0 } = req.query;
+
+    if (!interviewId) {
+      return res.status(400).json({ message: "Interview ID is required" });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(interviewId)) {
+      return res.status(400).json({ message: "Invalid interview ID format" });
+    }
+
+    const interviewExists = await Interview.findById(interviewId).select("_id candidateName");
+    if (!interviewExists) {
+      return res.status(404).json({ message: "Interview not found" });
+    }
+
+    const activities = await Audit.find({
+      entityType: "interview",
+      entityId: interviewId,
+    })
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .skip(parseInt(skip))
+      .lean();
+
+    const formatted = activities.map((activity) => ({
+      activityId: activity._id,
+      loginId: activity.userId,
+      performedBy: activity.userName,
+      performedByRole: activity.userRole,
+      performedFor: activity.entityName,
+      performedForId: activity.entityId,
+      actionType: activity.action,
+      fieldChanged: activity.fieldName,
+      oldValue: activity.oldValue,
+      newValue: activity.newValue,
+      description: activity.description,
+      message: formatActivityEntry(activity),
+      performedAt: activity.createdAt,
+    }));
+    console.log("formattedformatted",formatted);
+    
+
+    return res.status(200).json({
+      message: "Interview activity timeline fetched successfully",
+      candidateName: interviewExists.candidateName,
+      count: formatted.length,
+      activities: formatted,
+    });
+  } catch (err) {
+    console.error("GET INTERVIEW ACTIVITY TIMELINE ERROR:", err);
+    return res.status(500).json({ message: "Internal server error" });
   }
 };

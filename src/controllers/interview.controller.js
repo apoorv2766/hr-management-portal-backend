@@ -210,7 +210,7 @@ export const getInterviews = async (req, res) => {
       }
     }
     const interviews = await Interview.find(filter)
-      .sort({ interviewDateTime: -1 })
+      .sort({ createdAt: -1 })
       .select("-__v");
     return res.status(200).json({
       message: "Interviews fetched successfully",
@@ -252,6 +252,15 @@ export const getInterviewById = async (req, res) => {
 export const updateInterview = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Fetch the old interview first to track changes
+    const oldInterview = await Interview.findById(id);
+    if (!oldInterview) {
+      return res.status(404).json({
+        message: "Interview not found",
+      });
+    }
+
     const updatedInterview = await Interview.findByIdAndUpdate(id, req.body, {
       new: true,
       runValidators: true,
@@ -259,11 +268,110 @@ export const updateInterview = async (req, res) => {
       .populate("assignedInterviewer", "name email role")
       .select("-__v -interviewResult");
 
-    if (!updatedInterview) {
-      return res.status(404).json({
-        message: "Interview not found",
+    // Track field-level changes
+    const trackableFields = [
+      "candidateName",
+      "email",
+      "phone",
+      "position",
+      "round",
+      "status",
+      "currentCtc",
+      "expectedCtc",
+      "experience",
+      "interviewDateTime",
+      "meetingLink",
+      "joiningDate",
+      "currentCompany",
+      "noticePeriod",
+      "assignedInterviewer",
+    ];
+
+    // Normalize values for accurate comparison (especially dates)
+    const normalizeForCompare = (field, val) => {
+      if (val === undefined) return undefined;
+      if (val === null) return null;
+      try {
+        if (field === "joiningDate") {
+          const d = new Date(val);
+          if (isNaN(d.getTime())) return String(val);
+          const yyyy = d.getUTCFullYear();
+          const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+          const dd = String(d.getUTCDate()).padStart(2, "0");
+          return `${yyyy}-${mm}-${dd}`; // compare as date-only
+        }
+        if (field === "interviewDateTime") {
+          const d = new Date(val);
+          if (isNaN(d.getTime())) return String(val);
+          return d.getTime(); // compare epoch ms
+        }
+      } catch (_) {
+        // fall through to default
+      }
+      return typeof val === "string" ? val.trim() : String(val);
+    };
+
+    const changes = [];
+    for (const field of trackableFields) {
+      const newRaw = req.body[field];
+      if (newRaw === undefined) continue; // only consider provided fields
+      const oldNorm = normalizeForCompare(field, oldInterview[field]);
+      const newNorm = normalizeForCompare(field, newRaw);
+      if (oldNorm === newNorm) continue;
+
+      // Special handling for assignedInterviewer: include names in description
+      if (field === "assignedInterviewer") {
+        // Extract IDs from both old and new values
+        const oldId = oldInterview.assignedInterviewer
+          ? String(
+              oldInterview.assignedInterviewer._id ||
+                oldInterview.assignedInterviewer
+            )
+          : null;
+
+        const newId =
+          typeof newRaw === "object" && newRaw?._id
+            ? String(newRaw._id)
+            : String(newRaw);
+
+        // Skip if IDs are identical
+        if (oldId === newId) continue;
+
+        let oldName = null;
+        let newName = null;
+
+        try {
+          if (oldId && mongoose.Types.ObjectId.isValid(oldId)) {
+            const u = await User.findById(oldId).select("name");
+            oldName = u?.name || null;
+          }
+          if (newId && mongoose.Types.ObjectId.isValid(newId)) {
+            const u = await User.findById(newId).select("name");
+            newName = u?.name || null;
+          }
+        } catch (e) {
+          console.error("Error fetching interviewer names for activity log:", e);
+        }
+
+        changes.push({
+          fieldName: field,
+          oldValue: oldName || oldId || null,
+          newValue: newName || newId || null,
+          description: `Changed interviewer from ${
+            oldName || oldId || "-"
+          } to ${newName || newId || "-"}`,
+        });
+        continue;
+      }
+
+      changes.push({
+        fieldName: field,
+        oldValue: oldNorm,
+        newValue: newNorm,
+        description: `Changed ${field} from ${oldNorm} to ${newNorm}`,
       });
     }
+
     // Send email asynchronously (don't wait for it to complete)
     if (
       (req.body.round === "1st round" || req.body.round === "2nd round") &&
@@ -273,7 +381,7 @@ export const updateInterview = async (req, res) => {
       sendInterviewMail(
         updatedInterview.candidateName,
         updatedInterview.email,
-        updatedInterview.position,
+        // updatedInterview.position,
         updatedInterview.interviewDateTime,
         updatedInterview.meetingLink,
         updatedInterview.round
@@ -281,14 +389,16 @@ export const updateInterview = async (req, res) => {
     }
 
     // Provide activity payload for middleware
-    res.locals.activity = {
-      action: "UPDATE_INTERVIEW",
-      entityType: "interview",
-      entityId: updatedInterview._id,
-      entityName: `${updatedInterview.candidateName} - ${updatedInterview.position}`,
-      description: `Updated interview for ${updatedInterview.candidateName}`,
-      targetUserId: null,
-    };
+    if (changes.length > 0) {
+      res.locals.activity = {
+        action: "UPDATE_INTERVIEW",
+        entityType: "interview",
+        entityId: updatedInterview._id,
+        entityName: `${updatedInterview.candidateName} - ${updatedInterview.position}`,
+        changes,
+        targetUserId: null,
+      };
+    }
 
     return res.status(200).json({
       message: "Interview updated successfully",
